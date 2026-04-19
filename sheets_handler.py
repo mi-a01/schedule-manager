@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import requests
 import gspread
 from google.oauth2.service_account import Credentials
 import config
@@ -77,7 +78,35 @@ def update_video_status(video_number: int | str, long_status: str | None, short_
         sheet.update_cell(target_row, short_col, short_status)
         logger.info(f"動画{video_number} ショート動画ステータス更新: {short_status}")
 
+    # 更新後に両方FIXになっていたらGASのsyncAndTransferVideosをトリガー
+    _trigger_gas_if_both_fix(sheet, all_values, target_row, long_col, short_col,
+                              long_status, short_status, video_number)
     return True
+
+
+def _trigger_gas_if_both_fix(sheet, all_values, target_row, long_col, short_col,
+                               new_long, new_short, video_number) -> None:
+    """
+    更新後の行でロング動画・ショート動画が両方FIXになっている場合、
+    GASのsyncAndTransferVideosをHTTPで呼び出す。
+    GAS_SYNC_URL が設定されていない場合は何もしない。
+    """
+    gas_url = os.getenv("GAS_SYNC_URL", "")
+    if not gas_url:
+        return
+
+    row_data = all_values[target_row - 1] if target_row - 1 < len(all_values) else []
+
+    # 更新後の値（新しいステータス優先、なければ既存値を参照）
+    long_val  = new_long  if new_long  else (str(row_data[(long_col or 1) - 1]).strip()  if row_data else "")
+    short_val = new_short if new_short else (str(row_data[(short_col or 1) - 1]).strip() if row_data else "")
+
+    if long_val == "FIX" and short_val == "FIX":
+        try:
+            resp = requests.post(gas_url, timeout=15)
+            logger.info(f"動画{video_number}: 両方FIX → GAS sync triggered (status={resp.status_code})")
+        except Exception as e:
+            logger.error(f"動画{video_number}: GAS sync trigger 失敗: {e}")
 
 
 def get_videos_needing_schedule() -> list[dict]:
