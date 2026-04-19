@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from sheets_handler import get_videos_needing_schedule
+from sheets_handler import get_videos_needing_schedule, mark_schedule_sent
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,8 @@ def process_schedule_adjustment(client) -> list[dict]:
             )
 
             logger.info(f"動画{video_number} の日程調整DMを {editor} さんに送信しました")
+            # 送信済みをスプシに記録（重複送信防止）
+            mark_schedule_sent(video["row"])
             results.append({
                 "video_number": video_number,
                 "editor": editor,

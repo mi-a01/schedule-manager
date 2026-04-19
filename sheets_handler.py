@@ -83,7 +83,10 @@ def update_video_status(video_number: int | str, long_status: str | None, short_
 def get_videos_needing_schedule() -> list[dict]:
     """
     日程調整が必要な動画を抽出する。
-    条件: 編集者が入力済み かつ ロング動画・ショート動画がどちらも空欄
+    条件:
+      - 編集者が入力済み
+      - ロング動画・ショート動画がどちらも空欄
+      - 「日程調整送信済」列が空欄（送信済みはスキップ）
     """
     sheet = get_sheet()
     headers = sheet.row_values(1)
@@ -91,14 +94,14 @@ def get_videos_needing_schedule() -> list[dict]:
 
     # 列インデックス（0始まり）
     editor_col = (get_col_index_1based(headers, "編集者", exclude="初稿日") or 7) - 1
-    # 編集者初稿日: "初稿日" を含み "サムネ" を含まない列
     draft_col = (get_col_index_1based(headers, "初稿日", exclude="サムネ") or 8) - 1
     long_col = (get_col_index_1based(headers, "ロング動画") or 11) - 1
     short_col = (get_col_index_1based(headers, "ショート動画") or 12) - 1
+    sent_col_1based = get_col_index_1based(headers, "日程調整送信済")  # Noneなら列未作成
+    sent_col = (sent_col_1based or 0) - 1  # 0始まり
 
     results = []
-    for i, row in enumerate(all_values[1:], start=2):  # 1行目はヘッダーなのでスキップ
-        # 列数が足りない行はスキップ
+    for i, row in enumerate(all_values[1:], start=2):
         if len(row) <= max(editor_col, draft_col, long_col, short_col):
             continue
 
@@ -107,9 +110,9 @@ def get_videos_needing_schedule() -> list[dict]:
         draft_date = str(row[draft_col]).strip() if draft_col < len(row) else ""
         long_video = str(row[long_col]).strip() if long_col < len(row) else ""
         short_video = str(row[short_col]).strip() if short_col < len(row) else ""
+        already_sent = str(row[sent_col]).strip() if sent_col_1based and sent_col < len(row) else ""
 
-        # 動画番号と編集者があり、ロング/ショートがどちらも未設定の行
-        if video_number and editor and not long_video and not short_video:
+        if video_number and editor and not long_video and not short_video and not already_sent:
             results.append({
                 "row": i,
                 "video_number": video_number,
@@ -118,3 +121,20 @@ def get_videos_needing_schedule() -> list[dict]:
             })
 
     return results
+
+
+def mark_schedule_sent(row: int) -> None:
+    """
+    「日程調整送信済」列に送信日時を書き込む（重複送信防止）。
+    スプシに「日程調整送信済」列がない場合は何もしない。
+    """
+    from datetime import datetime
+    sheet = get_sheet()
+    headers = sheet.row_values(1)
+    sent_col = get_col_index_1based(headers, "日程調整送信済")
+    if not sent_col:
+        logger.warning("「日程調整送信済」列がスプレッドシートに見つかりません。スプシに列を追加してください。")
+        return
+    timestamp = datetime.now().strftime("%Y/%m/%d %H:%M")
+    sheet.update_cell(row, sent_col, timestamp)
+    logger.info(f"行{row} 日程調整送信済に記録: {timestamp}")
