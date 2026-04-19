@@ -17,6 +17,45 @@ def load_schedule_template() -> str:
         return f.read()
 
 
+def load_all_channels() -> tuple[dict[str, str], list[str]]:
+    """
+    editor_channels.txt から全チャンネル情報を読み込む。
+    返り値: (editor_channels dict, management_channel_ids list)
+      - editor_channels: {編集者名: チャンネルID}
+      - management_channel_ids: 動画管理チャンネルIDのリスト
+    """
+    editor_channels: dict[str, str] = {}
+    management_channel_ids: list[str] = []
+
+    path = "editor_channels.txt"
+    if not os.path.exists(path):
+        logger.warning("editor_channels.txt が見つかりません")
+        return editor_channels, management_channel_ids
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[management]"):
+                # 管理チャンネル: "[management] 名前=チャンネルID"
+                parts = line[len("[management]"):].strip().split("=", 1)
+                if len(parts) == 2:
+                    ch_id = parts[1].strip()
+                    if ch_id:
+                        management_channel_ids.append(ch_id)
+            elif "=" in line:
+                # 編集者チャンネル: "編集者名=チャンネルID"
+                parts = line.split("=", 1)
+                if len(parts) == 2:
+                    name = parts[0].strip()
+                    ch_id = parts[1].strip()
+                    if name and ch_id:
+                        editor_channels[name] = ch_id
+
+    return editor_channels, management_channel_ids
+
+
 def load_editor_channels() -> dict[str, str]:
     """
     editor_channels.txt から 編集者名 → SlackチャンネルID のマッピングを読み込む。

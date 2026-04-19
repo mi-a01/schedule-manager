@@ -22,7 +22,7 @@ from flask import Flask, request, jsonify
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_handler import register_handlers
-from schedule_handler import process_schedule_adjustment, load_editor_channels
+from schedule_handler import process_schedule_adjustment, load_all_channels
 from sheets_handler import get_videos_needing_schedule
 import config
 
@@ -40,13 +40,22 @@ slack_app = App(
 register_handlers(slack_app)
 slack_handler = SlackRequestHandler(slack_app)
 
-# editor_channels.txt に登録されたチャンネルを監視対象に追加
-# （編集者のチャンネルへの返信もステータス更新の対象にする）
-_editor_channels = load_editor_channels()
-for _ch_id in _editor_channels.values():
-    if _ch_id and not _ch_id.startswith("CXXXXXXXXX") and _ch_id not in config.MANAGEMENT_CHANNEL_IDS:
+# editor_channels.txt からチャンネル情報を読み込み、監視対象に登録
+_editor_channels, _management_ch_ids = load_all_channels()
+
+# 編集者チャンネルIDをセット（有効なIDのみ）
+config.EDITOR_CHANNEL_IDS = [
+    ch_id for ch_id in _editor_channels.values()
+    if ch_id and not ch_id.startswith("CXXXXXXXXX")
+]
+
+# 管理チャンネルをMANAGEMENT_CHANNEL_IDSに追加（重複除外）
+for _ch_id in _management_ch_ids:
+    if _ch_id and _ch_id not in config.MANAGEMENT_CHANNEL_IDS:
         config.MANAGEMENT_CHANNEL_IDS.append(_ch_id)
-logger.info(f"監視チャンネル: {config.MANAGEMENT_CHANNEL_IDS}")
+
+logger.info(f"動画管理チャンネル: {config.MANAGEMENT_CHANNEL_IDS}")
+logger.info(f"編集者チャンネル: {config.EDITOR_CHANNEL_IDS}")
 
 # ── Flask ─────────────────────────────────────────────────
 flask_app = Flask(__name__)

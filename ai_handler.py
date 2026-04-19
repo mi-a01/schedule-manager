@@ -89,3 +89,58 @@ def determine_status(
     except Exception as e:
         logger.error(f"ステータス判定中にエラー: {e}", exc_info=True)
         return None, None
+
+
+def determine_schedule_confirmed(messages: list[str]) -> list[str]:
+    """
+    編集者チャンネルのメッセージ履歴から、日程調整が承諾・確定した動画No.のリストを返す。
+    スレッド管理がないため会話全体の文脈から判断する。
+    返り値: 承諾された動画No.の文字列リスト（例: ["79", "80"]）
+    """
+    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+
+    system_prompt = load_template("editor_channel_prompt.txt")
+
+    messages_text = "\n".join(
+        [f"[{i + 1}] {msg}" for i, msg in enumerate(messages) if msg.strip()]
+    )
+
+    user_content = f"""以下はSlackの編集者チャンネルのメッセージ履歴です（古い順）。
+
+--- メッセージ履歴 ---
+{messages_text}
+----------------------
+
+日程調整が承諾・確定した動画のNo.を特定してください。
+以下のJSON形式のみで回答してください（他のテキストは不要）:
+
+{{
+  "confirmed_video_numbers": ["79", "80"],
+  "reasoning": "判断理由（簡潔に）"
+}}
+
+承諾が確認できない場合は confirmed_video_numbers を空リストにしてください。"""
+
+    try:
+        response = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=256,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+        )
+
+        text = response.content[0].text.strip()
+        logger.debug(f"AI応答（編集者チャンネル）: {text}")
+
+        json_match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not json_match:
+            return []
+
+        result = json.loads(json_match.group())
+        confirmed = result.get("confirmed_video_numbers", [])
+        logger.info(f"承諾確認された動画: {confirmed} / 理由: {result.get('reasoning', '')}")
+        return [str(v) for v in confirmed]
+
+    except Exception as e:
+        logger.error(f"承諾判定中にエラー: {e}", exc_info=True)
+        return []
