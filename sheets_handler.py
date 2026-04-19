@@ -86,7 +86,7 @@ def get_videos_needing_schedule() -> list[dict]:
     条件:
       - 編集者が入力済み
       - ロング動画・ショート動画がどちらも空欄
-      - 「日程調整送信済」列が空欄（送信済みはスキップ）
+      - 「送信済」列が空欄（送信済みはスキップ）
     """
     sheet = get_sheet()
     headers = sheet.row_values(1)
@@ -97,7 +97,7 @@ def get_videos_needing_schedule() -> list[dict]:
     draft_col = (get_col_index_1based(headers, "初稿日", exclude="サムネ") or 8) - 1
     long_col = (get_col_index_1based(headers, "ロング動画") or 11) - 1
     short_col = (get_col_index_1based(headers, "ショート動画") or 12) - 1
-    sent_col_1based = get_col_index_1based(headers, "日程調整送信済")  # Noneなら列未作成
+    sent_col_1based = get_col_index_1based(headers, "送信済")  # Noneなら列未作成
     sent_col = (sent_col_1based or 0) - 1  # 0始まり
 
     results = []
@@ -125,16 +125,16 @@ def get_videos_needing_schedule() -> list[dict]:
 
 def mark_schedule_sent(row: int) -> None:
     """
-    「日程調整送信済」列に送信日時を書き込む（重複送信防止）。
-    スプシに「日程調整送信済」列がない場合は何もしない。
+    「送信済」列に送信日時を書き込む（重複送信防止）。
+    スプシに「送信済」列がない場合は何もしない。
     """
     from datetime import datetime
     sheet = get_sheet()
     headers = sheet.row_values(1)
-    sent_col = get_col_index_1based(headers, "日程調整送信済")
+    sent_col = get_col_index_1based(headers, "送信済")
     if not sent_col:
-        logger.warning("「日程調整送信済」列がスプレッドシートに見つかりません。スプシに列を追加してください。")
+        logger.warning("「送信済」列がスプレッドシートに見つかりません。スプシに列を追加してください。")
         return
     timestamp = datetime.now().strftime("%Y/%m/%d %H:%M")
     sheet.update_cell(row, sent_col, timestamp)
-    logger.info(f"行{row} 日程調整送信済に記録: {timestamp}")
+    logger.info(f"行{row} 送信済に記録: {timestamp}")
