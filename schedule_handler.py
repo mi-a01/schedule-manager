@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def load_schedule_template() -> str:
     """
-    日程調整DMの定型文テンプレートを読み込む。
+    日程調整メッセージの定型文テンプレートを読み込む。
     templates/schedule_message.txt を編集することで文面を変更できる。
     """
     path = os.path.join("templates", "schedule_message.txt")
@@ -17,15 +17,15 @@ def load_schedule_template() -> str:
         return f.read()
 
 
-def load_slack_users() -> dict[str, str]:
+def load_editor_channels() -> dict[str, str]:
     """
-    slack_users.txt から 編集者名 → Slack ユーザーID のマッピングを読み込む。
-    フォーマット: 名前=SlackユーザーID (例: 玉木=U01234567)
+    editor_channels.txt から 編集者名 → SlackチャンネルID のマッピングを読み込む。
+    フォーマット: 編集者名=チャンネルID (例: 宮崎=C0APFS4EK7U)
     """
-    path = "slack_users.txt"
+    path = "editor_channels.txt"
     mapping: dict[str, str] = {}
     if not os.path.exists(path):
-        logger.warning("slack_users.txt が見つかりません")
+        logger.warning("editor_channels.txt が見つかりません")
         return mapping
 
     with open(path, "r", encoding="utf-8") as f:
@@ -36,16 +36,57 @@ def load_slack_users() -> dict[str, str]:
             parts = line.split("=", 1)
             if len(parts) == 2:
                 name = parts[0].strip()
-                user_id = parts[1].strip()
-                if name and user_id:
-                    mapping[name] = user_id
+                channel_id = parts[1].strip()
+                if name and channel_id and not channel_id.startswith("C") is False:
+                    mapping[name] = channel_id
 
     return mapping
 
 
+def find_channel_by_name(client, editor_name: str) -> str | None:
+    """
+    「{編集者名}さん」という名前のSlackチャンネルを自動検索する。
+    editor_channels.txt に登録がない場合のフォールバック。
+    """
+    target_name = f"{editor_name}さん"
+    try:
+        cursor = None
+        while True:
+            kwargs = {"types": "public_channel,private_channel", "limit": 200, "exclude_archived": True}
+            if cursor:
+                kwargs["cursor"] = cursor
+            response = client.conversations_list(**kwargs)
+            for ch in response.get("channels", []):
+                if ch.get("name") == target_name or ch.get("name_normalized") == target_name:
+                    logger.info(f"チャンネル自動検出: {editor_name} → #{target_name} ({ch['id']})")
+                    return ch["id"]
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+    except Exception as e:
+        logger.error(f"チャンネル自動検索エラー: {e}")
+    return None
+
+
+def get_editor_channel(client, editor: str, editor_channels: dict[str, str]) -> str | None:
+    """
+    編集者のチャンネルIDを取得する。
+    1. editor_channels.txt の登録を優先
+    2. なければ「{編集者名}さん」チャンネルを自動検索
+    """
+    # txtファイルに登録済みで CXXXXXXXXX でないもの
+    channel_id = editor_channels.get(editor, "")
+    if channel_id and not channel_id.startswith("CXXXXXXXXX") and channel_id != "CXXXXXXXXX":
+        return channel_id
+
+    # 自動検索
+    logger.info(f"{editor} のチャンネルが未登録のため自動検索します")
+    return find_channel_by_name(client, editor)
+
+
 def parse_draft_date(date_str: str) -> datetime | None:
     """
-    スプシの初稿日文字列（例: "1/25(日)", "1/25"）を datetime に変換する。
+    スプシの初稿日文字列（例: "4/30(木)", "1/25"）を datetime に変換する。
     年は現在年を基準に、過去日付なら翌年と判断。
     """
     if not date_str:
@@ -61,7 +102,6 @@ def parse_draft_date(date_str: str) -> datetime | None:
 
     try:
         dt = datetime(now.year, month, day)
-        # 既に2日以上過去なら翌年とみなす
         if dt < now - timedelta(days=2):
             dt = datetime(now.year + 1, month, day)
         return dt
@@ -78,11 +118,11 @@ def format_date_jp(dt: datetime) -> str:
 
 def process_schedule_adjustment(client) -> list[dict]:
     """
-    日程調整が必要な動画を抽出し、各編集者にSlack DMを送信する。
+    日程調整が必要な動画を抽出し、各編集者のチャンネルにメッセージを送信する。
     返り値: 処理結果のリスト
     """
     videos = get_videos_needing_schedule()
-    slack_users = load_slack_users()
+    editor_channels = load_editor_channels()
     template = load_schedule_template()
     results = []
 
@@ -97,15 +137,15 @@ def process_schedule_adjustment(client) -> list[dict]:
         video_number = video["video_number"]
         draft_date_str = video["first_draft_date"]
 
-        # Slack ユーザーID を取得
-        user_id = slack_users.get(editor)
-        if not user_id:
-            logger.warning(f"編集者 '{editor}' の Slack ユーザーID が slack_users.txt に登録されていません")
+        # 送信先チャンネルを取得
+        channel_id = get_editor_channel(client, editor, editor_channels)
+        if not channel_id:
+            logger.warning(f"編集者 '{editor}' のチャンネルが見つかりません（editor_channels.txt に登録するか、'{editor}さん' チャンネルを作成してください）")
             results.append({
                 "video_number": video_number,
                 "editor": editor,
                 "status": "error",
-                "message": f"Slack ユーザーID 未登録: {editor}",
+                "message": f"チャンネルが見つかりません: {editor}",
             })
             continue
 
@@ -123,7 +163,6 @@ def process_schedule_adjustment(client) -> list[dict]:
 
         prev_dt = draft_dt - timedelta(days=1)
 
-        # テンプレートに値を埋め込む
         message = template.format(
             video_number=video_number,
             draft_date=format_date_jp(draft_dt),
@@ -131,27 +170,23 @@ def process_schedule_adjustment(client) -> list[dict]:
             editor=editor,
         )
 
-        # DM を送信
+        # チャンネルにメッセージを送信
         try:
-            dm_response = client.conversations_open(users=user_id)
-            dm_channel_id = dm_response["channel"]["id"]
-
             client.chat_postMessage(
-                channel=dm_channel_id,
+                channel=channel_id,
                 text=message,
             )
-
-            logger.info(f"動画{video_number} の日程調整DMを {editor} さんに送信しました")
-            # 送信済みをスプシに記録（重複送信防止）
+            logger.info(f"動画{video_number} の日程調整メッセージを {editor} さんのチャンネル({channel_id})に送信しました")
             mark_schedule_sent(video["row"])
             results.append({
                 "video_number": video_number,
                 "editor": editor,
+                "channel_id": channel_id,
                 "status": "sent",
             })
 
         except Exception as e:
-            logger.error(f"動画{video_number} のDM送信に失敗 ({editor}): {e}")
+            logger.error(f"動画{video_number} のメッセージ送信に失敗 ({editor}, {channel_id}): {e}")
             results.append({
                 "video_number": video_number,
                 "editor": editor,

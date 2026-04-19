@@ -1,0 +1,21 @@
+# 編集者名 と Slack チャンネルID のマッピング
+# フォーマット: 編集者名=チャンネルID
+#
+# チャンネルIDの確認方法:
+#   SlackでチャンネルURLを開く → URLの末尾（例: /archives/C0APFS4EK7U → C0APFS4EK7U）
+#
+# ※ここに登録がない場合は「{編集者名}さん」という名前のチャンネルを自動検索します
+# ※自動検索でも見つからない場合はエラーになります
+
+宮崎=C0APFS4EK7U
+玉木=CXXXXXXXXX
+大場=CXXXXXXXXX
+棟=CXXXXXXXXX
+小門=CXXXXXXXXX
+中野=CXXXXXXXXX
+寺尾=CXXXXXXXXX
+福冨=CXXXXXXXXX
+石川=CXXXXXXXXX
+熊倉=CXXXXXXXXX
+田中=CXXXXXXXXX
+沼部=CXXXXXXXXX
