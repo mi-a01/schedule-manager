@@ -128,13 +128,11 @@ def mark_schedule_sent(row: int) -> None:
     「送信済」列に送信日時を書き込む（重複送信防止）。
     スプシに「送信済」列がない場合は何もしない。
     """
-    from datetime import datetime
     sheet = get_sheet()
     headers = sheet.row_values(1)
     sent_col = get_col_index_1based(headers, "送信済")
     if not sent_col:
         logger.warning("「送信済」列がスプレッドシートに見つかりません。スプシに列を追加してください。")
         return
-    timestamp = datetime.now().strftime("%Y/%m/%d %H:%M")
-    sheet.update_cell(row, sent_col, timestamp)
-    logger.info(f"行{row} 送信済に記録: {timestamp}")
+    sheet.update_cell(row, sent_col, "済")
+    logger.info(f"行{row} Slack送信済みに「済」を記録")
