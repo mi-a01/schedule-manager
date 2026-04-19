@@ -1,0 +1,24 @@
+# 編集者名 と Slack ユーザーID のマッピング
+# フォーマット: 編集者名=SlackユーザーID
+#
+# Slack ユーザーID の確認方法:
+#   Slack でユーザーのプロフィールを開く
+#   → 「その他」または「︙」メニュー
+#   → 「メンバーIDをコピー」
+#   （例: U01ABCD2345）
+#
+# スプシの「編集者」列に入っている名前と完全一致で照合するため、
+# 表示名（スプシの記載）を左辺に正確に入力してください。
+
+玉木=UXXXXXXXXX
+大場=UXXXXXXXXX
+棟=UXXXXXXXXX
+小門=UXXXXXXXXX
+中野=UXXXXXXXXX
+寺尾=UXXXXXXXXX
+福冨=UXXXXXXXXX
+石川=UXXXXXXXXX
+宮崎=U0APKDWKA4U
+熊倉=UXXXXXXXXX
+田中=UXXXXXXXXX
+沼部=UXXXXXXXXX

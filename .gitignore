@@ -1,0 +1,14 @@
+# 機密情報（絶対にコミットしない）
+.env
+credentials.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Claude
+.claude/
