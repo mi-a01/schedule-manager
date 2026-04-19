@@ -23,6 +23,7 @@ from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from slack_handler import register_handlers
 from schedule_handler import process_schedule_adjustment
+from sheets_handler import get_videos_needing_schedule
 import config
 
 logging.basicConfig(
@@ -64,6 +65,43 @@ def trigger_schedule():
         return jsonify({"success": True, "sent": sent, "errors": errors})
     except Exception as e:
         logger.error(f"日程調整処理中にエラー: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@flask_app.route("/debug/schedule", methods=["GET"])
+def debug_schedule():
+    """
+    日程調整の対象動画と、slack_users.txt の登録状況を確認するデバッグ用エンドポイント。
+    ブラウザで https://schedule-manager-50pu.onrender.com/debug/schedule を開くだけで確認できる。
+    動作確認後は削除してもOK。
+    """
+    import os
+    from schedule_handler import load_slack_users
+
+    try:
+        videos = get_videos_needing_schedule()
+        slack_users = load_slack_users()
+
+        result = []
+        for v in videos:
+            editor = v["editor"]
+            user_id = slack_users.get(editor)
+            result.append({
+                "video_number": v["video_number"],
+                "editor": editor,
+                "first_draft_date": v["first_draft_date"],
+                "slack_user_id": user_id or "❌ slack_users.txt に未登録",
+                "will_send": bool(user_id and not user_id.startswith("UXXXXXXXXX")),
+            })
+
+        return jsonify({
+            "対象動画数": len(videos),
+            "slack_users登録数": len(slack_users),
+            "対象動画リスト": result,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"デバッグエンドポイントエラー: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
