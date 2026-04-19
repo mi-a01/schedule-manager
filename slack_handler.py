@@ -1,7 +1,7 @@
 import logging
 import re
 from slack_bolt import App
-from ai_handler import determine_status, determine_schedule_confirmed
+from ai_handler import determine_status, determine_editor_channel_status
 from sheets_handler import update_video_status
 import config
 
@@ -92,16 +92,16 @@ def handle_editor_channel(event, client):
     if not messages:
         return
 
-    logger.info(f"[編集者CH] {channel_id} の承諾確認を開始 ({len(messages)}件のメッセージ)")
-    confirmed_video_numbers = determine_schedule_confirmed(messages)
+    logger.info(f"[編集者CH] {channel_id} のステータス判定を開始 ({len(messages)}件のメッセージ)")
+    status_map = determine_editor_channel_status(messages)
 
-    if not confirmed_video_numbers:
-        logger.info(f"[編集者CH] 承諾確認された動画なし")
+    if not status_map:
+        logger.info(f"[編集者CH] 更新対象の動画なし")
         return
 
-    for video_number in confirmed_video_numbers:
-        logger.info(f"[編集者CH] 動画No.{video_number} が承諾 → ステータスを「素材お渡し済」に更新")
-        success = update_video_status(video_number, long_status="素材お渡し済", short_status="素材お渡し済")
+    for video_number, status in status_map.items():
+        logger.info(f"[編集者CH] 動画No.{video_number} → ステータス「{status}」に更新")
+        success = update_video_status(video_number, long_status=status, short_status=status)
         if not success:
             logger.warning(f"[編集者CH] 動画{video_number}: スプレッドシートの更新に失敗")
 

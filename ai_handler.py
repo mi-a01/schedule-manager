@@ -7,7 +7,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-VALID_STATUSES = ["素材お渡し済", "編集中", "初稿提出", "修正中", "FIX", "着手不可"]
+VALID_STATUSES = ["素材お渡し済", "編集中", "初稿提出", "修正中", "FIX", "着手不可", "日程調整"]
 
 
 def load_template(filename: str) -> str:
@@ -91,11 +91,17 @@ def determine_status(
         return None, None
 
 
-def determine_schedule_confirmed(messages: list[str]) -> list[str]:
+def determine_editor_channel_status(messages: list[str]) -> dict[str, str]:
     """
-    編集者チャンネルのメッセージ履歴から、日程調整が承諾・確定した動画No.のリストを返す。
+    編集者チャンネルのメッセージ履歴から、各動画の現在ステータスを判定する。
     スレッド管理がないため会話全体の文脈から判断する。
-    返り値: 承諾された動画No.の文字列リスト（例: ["79", "80"]）
+
+    返り値: {動画No.: ステータス} の辞書
+      例: {"79": "日程調整", "80": "素材お渡し済"}
+
+    ステータス:
+      - "素材お渡し済": 日程が確定・承諾済み
+      - "日程調整": 返信はあるが日程未確定（交渉中・別日提案など）
     """
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
@@ -111,20 +117,23 @@ def determine_schedule_confirmed(messages: list[str]) -> list[str]:
 {messages_text}
 ----------------------
 
-日程調整が承諾・確定した動画のNo.を特定してください。
+各動画のステータスを判定してください。
 以下のJSON形式のみで回答してください（他のテキストは不要）:
 
 {{
-  "confirmed_video_numbers": ["79", "80"],
-  "reasoning": "判断理由（簡潔に）"
+  "videos": [
+    {{"video_number": "79", "status": "日程調整", "reasoning": "別日程を提案中"}},
+    {{"video_number": "80", "status": "素材お渡し済", "reasoning": "承諾済み"}}
+  ]
 }}
 
-承諾が確認できない場合は confirmed_video_numbers を空リストにしてください。"""
+返信がない動画は含めないでください。
+statusは必ず「素材お渡し済」か「日程調整」のどちらかにしてください。"""
 
     try:
         response = client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=256,
+            max_tokens=512,
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
@@ -134,13 +143,23 @@ def determine_schedule_confirmed(messages: list[str]) -> list[str]:
 
         json_match = re.search(r"\{.*\}", text, re.DOTALL)
         if not json_match:
-            return []
+            return {}
 
         result = json.loads(json_match.group())
-        confirmed = result.get("confirmed_video_numbers", [])
-        logger.info(f"承諾確認された動画: {confirmed} / 理由: {result.get('reasoning', '')}")
-        return [str(v) for v in confirmed]
+        videos = result.get("videos", [])
+
+        status_map: dict[str, str] = {}
+        valid_editor_statuses = {"素材お渡し済", "日程調整"}
+        for v in videos:
+            num = str(v.get("video_number", "")).strip()
+            status = v.get("status", "")
+            reasoning = v.get("reasoning", "")
+            if num and status in valid_editor_statuses:
+                status_map[num] = status
+                logger.info(f"動画No.{num} → {status} / 理由: {reasoning}")
+
+        return status_map
 
     except Exception as e:
-        logger.error(f"承諾判定中にエラー: {e}", exc_info=True)
-        return []
+        logger.error(f"編集者チャンネルのステータス判定中にエラー: {e}", exc_info=True)
+        return {}
