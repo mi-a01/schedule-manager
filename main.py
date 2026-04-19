@@ -79,9 +79,31 @@ def debug_schedule():
     from schedule_handler import load_slack_users
 
     try:
-        videos = get_videos_needing_schedule()
+        from sheets_handler import get_sheet, get_col_index_1based
+        from schedule_handler import load_slack_users
+
+        sheet = get_sheet()
+        headers = sheet.row_values(1)
         slack_users = load_slack_users()
 
+        # 列検出状況
+        editor_col = get_col_index_1based(headers, "編集者", exclude="初稿日")
+        draft_col  = get_col_index_1based(headers, "初稿日", exclude="サムネ")
+        long_col   = get_col_index_1based(headers, "ロング動画")
+        short_col  = get_col_index_1based(headers, "ショート動画")
+        sent_col   = get_col_index_1based(headers, "送信済")
+
+        col_info = {
+            "編集者列": f"{editor_col}列目 / ヘッダー名: '{headers[editor_col-1] if editor_col else 'なし'}'",
+            "初稿日列": f"{draft_col}列目 / ヘッダー名: '{headers[draft_col-1] if draft_col else 'なし'}'",
+            "ロング動画列": f"{long_col}列目 / ヘッダー名: '{headers[long_col-1] if long_col else '❌ 見つからない'}'",
+            "ショート動画列": f"{short_col}列目 / ヘッダー名: '{headers[short_col-1] if short_col else '❌ 見つからない'}'",
+            "送信済み列": f"{sent_col}列目 / ヘッダー名: '{headers[sent_col-1] if sent_col else '❌ 見つからない'}'",
+            "全ヘッダー": headers,
+        }
+
+        # 対象行の検索
+        videos = get_videos_needing_schedule()
         result = []
         for v in videos:
             editor = v["editor"]
@@ -94,10 +116,23 @@ def debug_schedule():
                 "will_send": bool(user_id and not user_id.startswith("UXXXXXXXXX")),
             })
 
+        # 最初の5行のサンプルデータ（編集者・ロング・ショートの実際の値を確認）
+        all_values = sheet.get_all_values()
+        sample_rows = []
+        for row in all_values[1:6]:
+            sample_rows.append({
+                "No": row[0] if len(row) > 0 else "",
+                "編集者": row[(editor_col or 7)-1] if len(row) >= (editor_col or 7) else "",
+                "ロング動画": row[(long_col or 11)-1] if len(row) >= (long_col or 11) else "",
+                "ショート動画": row[(short_col or 12)-1] if len(row) >= (short_col or 12) else "",
+                "送信済": row[(sent_col or 99)-1] if sent_col and len(row) >= sent_col else "",
+            })
+
         return jsonify({
+            "列検出結果": col_info,
             "対象動画数": len(videos),
-            "slack_users登録数": len(slack_users),
             "対象動画リスト": result,
+            "先頭5行のサンプル": sample_rows,
         }), 200
 
     except Exception as e:
