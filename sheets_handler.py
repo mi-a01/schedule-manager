@@ -85,8 +85,7 @@ def get_videos_needing_schedule() -> list[dict]:
     日程調整が必要な動画を抽出する。
     条件:
       - 編集者が入力済み
-      - ロング動画・ショート動画がどちらも空欄
-      - 「送信済」列が空欄（送信済みはスキップ）
+      - 「Slack送信済」列が空欄（送信済みはスキップ）
     """
     sheet = get_sheet()
     headers = sheet.row_values(1)
@@ -94,25 +93,22 @@ def get_videos_needing_schedule() -> list[dict]:
 
     # 列インデックス（0始まり）
     editor_col = (get_col_index_1based(headers, "編集者", exclude="初稿日") or 7) - 1
-    draft_col = (get_col_index_1based(headers, "初稿日", exclude="サムネ") or 8) - 1
-    long_col = (get_col_index_1based(headers, "ロング動画") or 11) - 1
-    short_col = (get_col_index_1based(headers, "ショート動画") or 12) - 1
-    sent_col_1based = get_col_index_1based(headers, "送信済")  # Noneなら列未作成
-    sent_col = (sent_col_1based or 0) - 1  # 0始まり
+    draft_col  = (get_col_index_1based(headers, "初稿日", exclude="サムネ") or 10) - 1
+    sent_col_1based = get_col_index_1based(headers, "送信済")
+    sent_col = (sent_col_1based - 1) if sent_col_1based else None
 
     results = []
     for i, row in enumerate(all_values[1:], start=2):
-        if len(row) <= max(editor_col, draft_col, long_col, short_col):
+        if len(row) <= max(editor_col, draft_col):
             continue
 
-        video_number = str(row[0]).strip()
-        editor = str(row[editor_col]).strip() if editor_col < len(row) else ""
-        draft_date = str(row[draft_col]).strip() if draft_col < len(row) else ""
-        long_video = str(row[long_col]).strip() if long_col < len(row) else ""
-        short_video = str(row[short_col]).strip() if short_col < len(row) else ""
-        already_sent = str(row[sent_col]).strip() if sent_col_1based and sent_col < len(row) else ""
+        video_number  = str(row[0]).strip()
+        editor        = str(row[editor_col]).strip() if editor_col < len(row) else ""
+        draft_date    = str(row[draft_col]).strip()  if draft_col  < len(row) else ""
+        already_sent  = str(row[sent_col]).strip()   if sent_col is not None and sent_col < len(row) else ""
 
-        if video_number and editor and not long_video and not short_video and not already_sent:
+        # 編集者あり & 未送信の行を抽出
+        if video_number and editor and not already_sent:
             results.append({
                 "row": i,
                 "video_number": video_number,
